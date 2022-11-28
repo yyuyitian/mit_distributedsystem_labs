@@ -39,9 +39,5 @@ func Map(filename string, contents string) []mr.KeyValue {
 // any map task.
 func Reduce(key string, values []string) string {
 	// return the number of occurrences of this word.
-	sum := 0
-	for i := range values {
-		sum += i
-	}
-	return strconv.Itoa(sum)
+	return strconv.Itoa(len(values))
 }

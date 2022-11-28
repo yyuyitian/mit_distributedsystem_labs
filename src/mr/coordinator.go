@@ -15,34 +15,56 @@ type Coordinator struct {
 }
 
 var filesall []string
-var workerIndex int
+var mapworkerIndex int
 var mapServers []string
 var reduceIndex int
+var finishedWorkers int
+var role int // 0 is wait; 1 is map; 2 is reduce; tell worker what should they do now
+var targetmapWorker int
 
 // Your code here -- RPC handlers for the worker to call.
 
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
-func (c *Coordinator) SendFiles(args *ExampleArgs, reply *FilesName) error {
-	reply.Files = filesall[workerIndex : workerIndex+2]
-	reply.Index = workerIndex
-	workerIndex += 2
-	return nil
-}
 
 func (c *Coordinator) SendTasks(args *ExampleArgs, reply *Task) error {
 	fmt.Printf("SendTasks!\n")
-	reply.Sockets = mapServers
 	reply.Index = reduceIndex
 	reduceIndex++
 	return nil
 }
 
 func (c *Coordinator) ReceiveNotify(socket string, reply *Task) error {
-	fmt.Printf("ReceiveNotify!\n")
-	mapServers = append(mapServers, socket)
-	reply.Sockets = mapServers
+	fmt.Printf("ReceiveNotify of map worker done!\n")
+	finishedWorkers++
+	if finishedWorkers == 4 {
+		role = 3
+	}
+	return nil
+}
+
+func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
+	fmt.Printf("DeliverRole!\n")
+	if role == 1 {
+		reply.Files = filesall[mapworkerIndex : mapworkerIndex+2]
+		reply.Index = mapworkerIndex
+		reply.Role = role
+		mapworkerIndex += 2
+		if mapworkerIndex == 8 {
+			role = 0
+		}
+		return nil
+	} else if role == 3 {
+		reply.Role = role
+		reply.Index = reduceIndex
+		reduceIndex++
+		return nil
+	} else if role == 0 {
+		reply.Role = role
+		return nil
+	}
+
 	return nil
 }
 
@@ -76,10 +98,11 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-
+	targetmapWorker = 4
 	// Your code here.
 	filesall = files
-
+	finishedWorkers = 0
+	role = 1
 	c.server()
 	return &c
 }

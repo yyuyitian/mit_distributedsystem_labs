@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"time"
 )
 
 type WorkerSocket struct {
@@ -47,11 +48,28 @@ func ihash(key string) int {
 
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string, role string) {
-	if role == "map" {
-		files := RequstFiles()
+	reducef func(string, []string) string) {
+	var role int
+	var task *Task
+	for true {
+		task = RequstTask()
+		fmt.Println("receive role:" + strconv.Itoa(task.Role))
+		if task.Role == 1 {
+			role = 1
+			break
+		} else if task.Role == 3 {
+			role = 3
+			break
+		} else if task.Role == 0 {
+			role = 0
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	if role == 1 {
+		files := task.Files
 		intermediate := []KeyValue{}
-		for _, filename := range files.Files {
+		for _, filename := range files {
 			fmt.Println("open file" + filename)
 			file, err := os.Open(filename)
 			if err != nil {
@@ -66,7 +84,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			intermediate = append(intermediate, kva...)
 		}
 		sort.Sort(ByKey(intermediate))
-		indexStr := strconv.Itoa(files.Index)
+		indexStr := strconv.Itoa(task.Index)
 		oname := "mr-out-" + indexStr + "-"
 		fileNameglobal = oname
 		ofile, _ := os.Create(oname)
@@ -140,8 +158,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		// for w.Done() == false {
 		// 	time.Sleep(time.Second)
 		// }
-	} else if role == "reduce" {
-		task := RequestTask()
+	} else if role == 3 {
 		index := task.Index
 		log.Println("task index is" + strconv.Itoa(index))
 		var letter string
@@ -265,25 +282,12 @@ func CallExample() {
 	}
 }
 
-func RequstFiles() *FilesName {
-	args := ExampleArgs{}
-	reply := FilesName{}
-	ok := call("Coordinator.SendFiles", &args, &reply)
-	if ok {
-		fmt.Println(reply.Files)
-	} else {
-		fmt.Printf("call failed!\n")
-	}
-	return &reply
-}
-
-func RequestTask() *Task {
+func RequstTask() *Task {
 	args := ExampleArgs{}
 	reply := Task{}
-	ok := call("Coordinator.SendTasks", &args, &reply)
+	ok := call("Coordinator.DeliverTask", &args, &reply)
 	if ok {
-		fmt.Println(reply.Sockets)
-		fmt.Println(reply.Index)
+		fmt.Println(reply.Role)
 	} else {
 		fmt.Printf("call failed!\n")
 	}
@@ -295,7 +299,7 @@ func notifyDone() {
 	reply := Task{}
 	ok := call("Coordinator.ReceiveNotify", &args, &reply)
 	if ok {
-		fmt.Println(reply.Sockets)
+		fmt.Println(reply.Index)
 	} else {
 		fmt.Printf("call failed!\n")
 	}

@@ -27,14 +27,10 @@ type ExampleReply struct {
 	Y int
 }
 
-type FilesName struct {
-	Files []string
-	Index int
-}
-
 type Task struct {
-	Sockets []string
-	Index   int
+	Index int
+	Role  int
+	Files []string
 }
 
 type MapResult struct {
