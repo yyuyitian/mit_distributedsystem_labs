@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 )
 
 type Coordinator struct {
@@ -14,13 +15,20 @@ type Coordinator struct {
 
 }
 
+type MUTEX struct {
+	mu sync.Mutex
+}
+
 var filesall []string
 var mapworkerIndex int
 var mapServers []string
 var reduceIndex int
 var finishedWorkers int
+var finishedReduceWorkers int
 var role int // 0 is wait; 1 is map; 2 is reduce; tell worker what should they do now
 var targetmapWorker int
+var ret bool
+var lock *MUTEX
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -30,22 +38,38 @@ var targetmapWorker int
 
 func (c *Coordinator) SendTasks(args *ExampleArgs, reply *Task) error {
 	fmt.Printf("SendTasks!\n")
+	lock.mu.Lock()
 	reply.Index = reduceIndex
 	reduceIndex++
+	lock.mu.Unlock()
 	return nil
 }
 
 func (c *Coordinator) ReceiveNotify(socket string, reply *Task) error {
 	fmt.Printf("ReceiveNotify of map worker done!\n")
+	lock.mu.Lock()
 	finishedWorkers++
 	if finishedWorkers == 4 {
 		role = 3
 	}
+	lock.mu.Unlock()
+	return nil
+}
+
+func (c *Coordinator) ReceiveReduceNotify(socket string, reply *Task) error {
+	fmt.Printf("ReceiveNotify of reduce worker done!\n")
+	lock.mu.Lock()
+	finishedReduceWorkers++
+	if finishedReduceWorkers == 4 {
+		ret = true
+	}
+	lock.mu.Unlock()
 	return nil
 }
 
 func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
-	fmt.Printf("DeliverRole!\n")
+	fmt.Printf("server: DeliverRole!\n")
+	lock.mu.Lock()
 	if role == 1 {
 		reply.Files = filesall[mapworkerIndex : mapworkerIndex+2]
 		reply.Index = mapworkerIndex
@@ -54,17 +78,19 @@ func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
 		if mapworkerIndex == 8 {
 			role = 0
 		}
+		lock.mu.Unlock()
 		return nil
 	} else if role == 3 {
 		reply.Role = role
 		reply.Index = reduceIndex
 		reduceIndex++
+		lock.mu.Unlock()
 		return nil
 	} else if role == 0 {
 		reply.Role = role
+		lock.mu.Unlock()
 		return nil
 	}
-
 	return nil
 }
 
@@ -79,17 +105,13 @@ func (c *Coordinator) server() {
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
-	fmt.Printf("listen!\n")
+	fmt.Printf("master start listen!\n")
 	go http.Serve(l, nil)
 }
 
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	ret := false
-
-	// Your code here.
-
 	return ret
 }
 
@@ -102,7 +124,10 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// Your code here.
 	filesall = files
 	finishedWorkers = 0
+	finishedReduceWorkers = 0
 	role = 1
+	ret = false
+	lock = &MUTEX{}
 	c.server()
 	return &c
 }

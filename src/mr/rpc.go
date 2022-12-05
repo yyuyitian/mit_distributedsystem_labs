@@ -46,7 +46,7 @@ type MapResult struct {
 func coordinatorSock() string {
 	s := "/var/tmp/824-mr-"
 	s += strconv.Itoa(os.Getuid())
-	fmt.Println(s)
+	//fmt.Println(s)
 	return s
 }
 

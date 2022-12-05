@@ -54,6 +54,9 @@ func Worker(mapf func(string, string) []KeyValue,
 	for true {
 		task = RequstTask()
 		fmt.Println("receive role:" + strconv.Itoa(task.Role))
+		if task.Role == -1 {
+			break
+		}
 		if task.Role == 1 {
 			role = 1
 			break
@@ -70,7 +73,6 @@ func Worker(mapf func(string, string) []KeyValue,
 		files := task.Files
 		intermediate := []KeyValue{}
 		for _, filename := range files {
-			fmt.Println("open file" + filename)
 			file, err := os.Open(filename)
 			if err != nil {
 				log.Fatalf("cannot open %v", filename)
@@ -85,7 +87,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		}
 		sort.Sort(ByKey(intermediate))
 		indexStr := strconv.Itoa(task.Index)
-		oname := "mr-out-" + indexStr + "-"
+		oname := "mr-" + indexStr + "-"
 		fileNameglobal = oname
 		ofile, _ := os.Create(oname)
 
@@ -104,28 +106,24 @@ func Worker(mapf func(string, string) []KeyValue,
 		for i < len(intermediate) {
 			word := intermediate[i].Key
 			if word[0] == 'A' && aflag == false {
-				fmt.Println("meet a files")
 				ofile1, _ := os.Create(oname + "-A")
 				encvar1 := json.NewEncoder(ofile1)
 				encvar = encvar1
 				aflag = true
 			} else if word[0] == 'H' && hflag == false {
 				ofilevar.Close()
-				fmt.Println("meet h files")
 				ofile2, _ := os.Create(oname + "-H")
 				encvar2 := json.NewEncoder(ofile2)
 				encvar = encvar2
 				hflag = true
 			} else if word[0] == 'O' && oflag == false {
 				ofilevar.Close()
-				fmt.Println("meet o files")
 				ofile3, _ := os.Create(oname + "-O")
 				encvar3 := json.NewEncoder(ofile3)
 				encvar = encvar3
 				oflag = true
 			} else if word[0] == 'U' && uflag == false {
 				ofilevar.Close()
-				fmt.Println("meet u files")
 				ofile4, _ := os.Create(oname + "-U")
 				encvar4 := json.NewEncoder(ofile4)
 				encvar = encvar4
@@ -174,13 +172,12 @@ func Worker(mapf func(string, string) []KeyValue,
 		kva := []KeyValue{}
 		v := 0
 		for v <= 6 {
-			filename := "mr-out-" + strconv.Itoa(v) + "--" + letter
+			filename := "mr-" + strconv.Itoa(v) + "--" + letter
 			file, err := os.Open(filename)
 			if err != nil {
 				log.Fatalf("cannot open %v", filename)
 			}
 			dec := json.NewDecoder(file)
-			fmt.Println("NewDecoder")
 			for {
 				var kv KeyValue
 				if err := dec.Decode(&kv); err != nil {
@@ -188,15 +185,14 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				kva = append(kva, kv)
 			}
-			fmt.Println("NewDecoder finish")
 			if err != nil {
 				log.Fatalf("cannot read %v", filename)
 			}
 			file.Close()
 			v += 2
 		}
-		fmt.Println("key is:" + kva[0].Key + kva[0].Value)
-		reducefile, _ := os.Create("reduce" + strconv.Itoa(index))
+		reducefile, _ := os.Create("mr-out-" + strconv.Itoa(index))
+		sort.Sort(ByKey(kva))
 		i := 0
 		for i < len(kva) {
 			j := i + 1
@@ -209,8 +205,9 @@ func Worker(mapf func(string, string) []KeyValue,
 			}
 			output := reducef(kva[i].Key, values)
 			fmt.Fprintf(reducefile, "%v %v\n", kva[i].Key, output)
-			i = j + 1
+			i = j
 		}
+		notifyReduceDone()
 	}
 }
 
@@ -283,13 +280,15 @@ func CallExample() {
 }
 
 func RequstTask() *Task {
+	fmt.Println("worker request task")
 	args := ExampleArgs{}
 	reply := Task{}
 	ok := call("Coordinator.DeliverTask", &args, &reply)
 	if ok {
-		fmt.Println(reply.Role)
+		fmt.Println("")
 	} else {
 		fmt.Printf("call failed!\n")
+		reply.Role = -1
 	}
 	return &reply
 }
@@ -305,6 +304,17 @@ func notifyDone() {
 	}
 }
 
+func notifyReduceDone() {
+	args := serverName
+	reply := Task{}
+	ok := call("Coordinator.ReceiveReduceNotify", &args, &reply)
+	if ok {
+		fmt.Print("call success!\n")
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+}
+
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
@@ -312,7 +322,7 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
 	c, err := rpc.DialHTTP("unix", sockname)
-	fmt.Println("dialing")
+	fmt.Println("worker start dialing")
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
@@ -334,7 +344,7 @@ func callMap(rpcname string, args interface{}, reply interface{}, server string)
 	c, err := rpc.DialHTTP("unix", sockname)
 	fmt.Println("dialing")
 	if err != nil {
-		log.Fatal("dialing:", err)
+		log.Fatal("worker start dialing:", err)
 	}
 	defer c.Close()
 	err = c.Call(rpcname, args, reply)
