@@ -28,9 +28,10 @@ type ExampleReply struct {
 }
 
 type Task struct {
-	Index int
-	Role  int
-	Files []string
+	Index     int
+	Role      int
+	Files     []string
+	reduceNum int
 }
 
 type MapResult struct {

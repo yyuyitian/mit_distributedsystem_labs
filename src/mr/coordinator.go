@@ -29,6 +29,7 @@ var role int // 0 is wait; 1 is map; 2 is reduce; tell worker what should they d
 var targetmapWorker int
 var ret bool
 var lock *MUTEX
+var reduceNum int
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -74,6 +75,7 @@ func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
 		reply.Files = filesall[mapworkerIndex : mapworkerIndex+2]
 		reply.Index = mapworkerIndex
 		reply.Role = role
+		reply.reduceNum = reduceNum
 		mapworkerIndex += 2
 		if mapworkerIndex == 8 {
 			role = 0
@@ -127,6 +129,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	finishedReduceWorkers = 0
 	role = 1
 	ret = false
+	reduceNum = nReduce
 	lock = &MUTEX{}
 	c.server()
 	return &c

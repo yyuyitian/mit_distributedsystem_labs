@@ -85,7 +85,6 @@ func Worker(mapf func(string, string) []KeyValue,
 			kva := mapf(filename, string(content))
 			intermediate = append(intermediate, kva...)
 		}
-		sort.Sort(ByKey(intermediate))
 		indexStr := strconv.Itoa(task.Index)
 		oname := "mr-" + indexStr + "-"
 		fileNameglobal = oname
@@ -99,46 +98,19 @@ func Worker(mapf func(string, string) []KeyValue,
 		ofilevar := ofile
 		encvar := json.NewEncoder(ofilevar)
 
-		aflag := false
-		hflag := false
-		oflag := false
-		uflag := false
+		reduceNum := task.reduceNum
+		k := 0
+		encvarlist := []*json.Encoder{}
+		for k < reduceNum {
+			oname := "reduce-" + indexStr + "-" + strconv.Itoa(k)
+			ofile, _ := os.Create(oname)
+			encvar := json.NewEncoder(ofile)
+			encvarlist = append(encvarlist, encvar)
+		}
 		for i < len(intermediate) {
 			word := intermediate[i].Key
-			if word[0] == 'A' && aflag == false {
-				ofile1, _ := os.Create(oname + "-A")
-				encvar1 := json.NewEncoder(ofile1)
-				encvar = encvar1
-				aflag = true
-			} else if word[0] == 'H' && hflag == false {
-				ofilevar.Close()
-				ofile2, _ := os.Create(oname + "-H")
-				encvar2 := json.NewEncoder(ofile2)
-				encvar = encvar2
-				hflag = true
-			} else if word[0] == 'O' && oflag == false {
-				ofilevar.Close()
-				ofile3, _ := os.Create(oname + "-O")
-				encvar3 := json.NewEncoder(ofile3)
-				encvar = encvar3
-				oflag = true
-			} else if word[0] == 'U' && uflag == false {
-				ofilevar.Close()
-				ofile4, _ := os.Create(oname + "-U")
-				encvar4 := json.NewEncoder(ofile4)
-				encvar = encvar4
-				uflag = true
-			}
-			// j := i + 1
-			// for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
-			// 	j++
-			// }
-			// values := []string{}
-			// for k := i; k < j; k++ {
-			// 	values = append(values, intermediate[k].Value)
-			// }
-			// output := reducef(intermediate[i].Key, values)
-			//this is the correct format for each line of Reduce output.
+			reduceIndex := ihash(word) % task.reduceNum
+			encvar := encvarlist[reduceIndex]
 			kv := intermediate[i]
 			err := encvar.Encode(&kv)
 			if err != nil {
