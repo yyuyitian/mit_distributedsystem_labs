@@ -65,11 +65,19 @@ failed_any=0
 # first word-count
 
 # generate the correct output
+echo '***start sequential***' Starting wc test.
+currentDate=`date`
+echo $currentDate
 ../mrsequential ../../mrapps/wc.so ../pg*txt || exit 1
 sort mr-out-0 > mr-correct-wc.txt
 rm -f mr-out*
+echo '***end sequential***' Starting wc test.
+currentDate=`date`
+echo $currentDate
 
-echo '***' Starting wc test.
+echo '***start distributed***' Starting wc test.
+currentDate=`date`
+echo $currentDate
 
 $TIMEOUT ../mrcoordinator ../pg*txt &
 pid=$!
@@ -87,6 +95,7 @@ $TIMEOUT ../mrworker ../../mrapps/wc.so &
 $TIMEOUT ../mrworker ../../mrapps/wc.so &
 $TIMEOUT ../mrworker ../../mrapps/wc.so &
 
+
 # wait for the coordinator to exit.
 wait $pid
 
@@ -96,6 +105,8 @@ sort mr-out* | grep . > mr-wc-all
 if cmp mr-wc-all mr-correct-wc.txt
 then
   echo '---' wc test: PASS
+  currentDate=`date`
+  echo $currentDate
 else
   echo '---' wc output is not the same as mr-correct-wc.txt
   echo '---' wc test: FAIL

@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -20,37 +19,27 @@ type MUTEX struct {
 }
 
 var filesall []string
-var mapworkerIndex int
+var fileIndex int
 var mapServers []string
 var reduceIndex int
-var finishedWorkers int
+var finishedfiles int
 var finishedReduceWorkers int
 var role int // 0 is wait; 1 is map; 2 is reduce; tell worker what should they do now
-var targetmapWorker int
 var ret bool
 var lock *MUTEX
 var reduceNum int
+var filesSize int // size of files to be deal with
 
 // Your code here -- RPC handlers for the worker to call.
 
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
-
-func (c *Coordinator) SendTasks(args *ExampleArgs, reply *Task) error {
-	fmt.Printf("SendTasks!\n")
-	lock.mu.Lock()
-	reply.Index = reduceIndex
-	reduceIndex++
-	lock.mu.Unlock()
-	return nil
-}
-
 func (c *Coordinator) ReceiveNotify(socket string, reply *Task) error {
-	fmt.Printf("ReceiveNotify of map worker done!\n")
+	//fmt.Printf("ReceiveNotify of map worker finish a file done!\n")
 	lock.mu.Lock()
-	finishedWorkers++
-	if finishedWorkers == 4 {
+	finishedfiles++
+	if finishedfiles == filesSize {
 		role = 3
 	}
 	lock.mu.Unlock()
@@ -58,10 +47,10 @@ func (c *Coordinator) ReceiveNotify(socket string, reply *Task) error {
 }
 
 func (c *Coordinator) ReceiveReduceNotify(socket string, reply *Task) error {
-	fmt.Printf("ReceiveNotify of reduce worker done!\n")
+	//fmt.Printf("ReceiveNotify of reduce worker done!\n")
 	lock.mu.Lock()
 	finishedReduceWorkers++
-	if finishedReduceWorkers == 4 {
+	if finishedReduceWorkers == reduceNum {
 		ret = true
 	}
 	lock.mu.Unlock()
@@ -69,26 +58,30 @@ func (c *Coordinator) ReceiveReduceNotify(socket string, reply *Task) error {
 }
 
 func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
-	fmt.Printf("server: DeliverRole!\n")
+	//fmt.Printf("server: DeliverRole!\n")
 	lock.mu.Lock()
-	if role == 1 {
-		reply.Files = filesall[mapworkerIndex : mapworkerIndex+2]
-		reply.Index = mapworkerIndex
+	if role == MapWorker {
+		reply.File = filesall[fileIndex]
 		reply.Role = role
-		reply.reduceNum = reduceNum
-		mapworkerIndex += 2
-		if mapworkerIndex == 8 {
-			role = 0
+		reply.ReduceNum = reduceNum
+		fileIndex++
+		if fileIndex == filesSize {
+			role = WaitToWork
 		}
 		lock.mu.Unlock()
 		return nil
-	} else if role == 3 {
+	} else if role == ReduceWorker {
+		if reduceIndex >= reduceNum {
+			reply.Role = ExitWork
+			lock.mu.Unlock()
+			return nil
+		}
 		reply.Role = role
 		reply.Index = reduceIndex
 		reduceIndex++
 		lock.mu.Unlock()
 		return nil
-	} else if role == 0 {
+	} else if role == WaitToWork {
 		reply.Role = role
 		lock.mu.Unlock()
 		return nil
@@ -107,7 +100,7 @@ func (c *Coordinator) server() {
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
-	fmt.Printf("master start listen!\n")
+	//fmt.Printf("master start listen!\n")
 	go http.Serve(l, nil)
 }
 
@@ -122,12 +115,12 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-	targetmapWorker = 4
 	// Your code here.
 	filesall = files
-	finishedWorkers = 0
+	filesSize = len(files)
+	finishedfiles = 0
 	finishedReduceWorkers = 0
-	role = 1
+	role = MapWorker
 	ret = false
 	reduceNum = nReduce
 	lock = &MUTEX{}

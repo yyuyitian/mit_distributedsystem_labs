@@ -14,10 +14,12 @@ import (
 	"time"
 )
 
-//
 // example to show how to declare the arguments
 // and reply for an RPC.
-//
+const MapWorker int = 1
+const ReduceWorker int = 3
+const WaitToWork int = 0
+const ExitWork int = -1
 
 type ExampleArgs struct {
 	X int
@@ -30,8 +32,8 @@ type ExampleReply struct {
 type Task struct {
 	Index     int
 	Role      int
-	Files     []string
-	reduceNum int
+	File      string
+	ReduceNum int
 }
 
 type MapResult struct {
