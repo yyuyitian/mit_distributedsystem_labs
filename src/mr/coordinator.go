@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 type Coordinator struct {
@@ -28,7 +29,13 @@ var role int // 0 is wait; 1 is map; 2 is reduce; tell worker what should they d
 var ret bool
 var lock *MUTEX
 var reduceNum int
-var filesSize int // size of files to be deal with
+var filesSize int              // size of files to be deal with
+var failedfiles []int          // files do not dealed within 10s
+var failedReduceTasks []int    // reduce task do not dealed within 10s
+var deliveredMapTask []bool    // file index have been delivered
+var deliveredReduceTask []bool // task index have been delivered
+const checkTimes int = 5
+const sleepTime int = 1 // 1s
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -40,7 +47,7 @@ func (c *Coordinator) ReceiveNotify(socket string, reply *Task) error {
 	lock.mu.Lock()
 	finishedfiles++
 	if finishedfiles == filesSize {
-		role = 3
+		role = ReduceWorker
 	}
 	lock.mu.Unlock()
 	return nil
@@ -61,9 +68,24 @@ func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
 	//fmt.Printf("server: DeliverRole!\n")
 	lock.mu.Lock()
 	if role == MapWorker {
+		// first deal with the failed files, when
+		if len(failedfiles) > 0 {
+			index := failedfiles[len(failedfiles)-1] // index of failed file
+			reply.File = filesall[index]
+			reply.Role = role
+			reply.ReduceNum = reduceNum
+			go checkMapWorker(index)
+			failedfiles = failedfiles[:len(failedfiles)-1] // remove delivered task
+			if len(failedfiles) == 0 && fileIndex == filesSize {
+				role = WaitToWork
+			}
+			lock.mu.Unlock()
+			return nil
+		}
 		reply.File = filesall[fileIndex]
 		reply.Role = role
 		reply.ReduceNum = reduceNum
+		go checkMapWorker(fileIndex)
 		fileIndex++
 		if fileIndex == filesSize {
 			role = WaitToWork
@@ -72,7 +94,16 @@ func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
 		return nil
 	} else if role == ReduceWorker {
 		if reduceIndex >= reduceNum {
-			reply.Role = ExitWork
+			reply.Role = WaitToWork
+			lock.mu.Unlock()
+			return nil
+		}
+		if len(failedReduceTasks) > 0 {
+			reply.Index = failedReduceTasks[len(failedReduceTasks)-1]
+			reply.Role = role
+			if len(failedReduceTasks) == 0 && reduceIndex >= reduceNum {
+				reply.Role = WaitToWork
+			}
 			lock.mu.Unlock()
 			return nil
 		}
@@ -87,6 +118,32 @@ func (c *Coordinator) DeliverTask(args *ExampleArgs, reply *Task) error {
 		return nil
 	}
 	return nil
+}
+
+func checkMapWorker(fileindex int) {
+	i := 0
+	for i < checkTimes {
+		if deliveredMapTask[fileindex] == true {
+			break
+		}
+		time.Sleep(1 * time.Second)
+		i++
+	}
+	role = MapWorker
+	failedfiles = append(failedfiles, fileindex)
+}
+
+func checkReduceWorker(fileindex int) {
+	i := 0
+	for i < checkTimes {
+		if deliveredReduceTask[fileindex] == true {
+			break
+		}
+		time.Sleep(1 * time.Second)
+		i++
+	}
+	role = ReduceWorker
+	failedfiles = append(failedReduceTasks, fileindex)
 }
 
 // start a thread that listens for RPCs from worker.go
@@ -120,6 +177,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	filesSize = len(files)
 	finishedfiles = 0
 	finishedReduceWorkers = 0
+	deliveredMapTask = make([]bool, filesSize)
+	deliveredReduceTask = make([]bool, reduceNum)
 	role = MapWorker
 	ret = false
 	reduceNum = nReduce

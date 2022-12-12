@@ -72,7 +72,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			doReduceWork(task, reducef)
 			notifyReduceDone()
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
