@@ -29,7 +29,6 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 var filesToDeal []string
 var fileNameglobal string
-var serverName string
 var encvarlist []*json.Encoder
 
 // Map functions return a slice of KeyValue.
@@ -67,16 +66,16 @@ func Worker(mapf func(string, string) []KeyValue,
 		}
 		if role == MapWorker {
 			doMapWork(task, mapf)
-			notifyDone()
 		} else if role == ReduceWorker {
 			doReduceWork(task, reducef)
-			notifyReduceDone()
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(2 * time.Second)
+		//fmt.Println("worker require task")
 	}
 }
 
 func doMapWork(task *Task, mapf func(string, string) []KeyValue) {
+	//fmt.Println("map worker received file: " + strconv.Itoa(task.Index))
 	filename := task.File
 	intermediate := []KeyValue{}
 	file, err := os.Open(filename)
@@ -119,6 +118,7 @@ func doMapWork(task *Task, mapf func(string, string) []KeyValue) {
 		}
 		i++
 	}
+	notifyDone(task.Index)
 }
 
 func doReduceWork(task *Task, reducef func(string, []string) string) {
@@ -163,6 +163,7 @@ func doReduceWork(task *Task, reducef func(string, []string) string) {
 		fmt.Fprintf(reducefile, "%v %v\n", kva[i].Key, output)
 		i = j
 	}
+	notifyReduceDone(index)
 }
 
 func (w *WorkerSocket) Done() bool {
@@ -193,8 +194,8 @@ func RequstTask() *Task {
 	return &reply
 }
 
-func notifyDone() {
-	args := serverName
+func notifyDone(fileindex int) {
+	args := fileindex
 	reply := Task{}
 	ok := call("Coordinator.ReceiveNotify", &args, &reply)
 	if !ok {
@@ -202,8 +203,8 @@ func notifyDone() {
 	}
 }
 
-func notifyReduceDone() {
-	args := serverName
+func notifyReduceDone(reduceindex int) {
+	args := reduceindex
 	reply := Task{}
 	ok := call("Coordinator.ReceiveReduceNotify", &args, &reply)
 	if ok {
