@@ -25,4 +25,18 @@ How does MR get good load balance?
 
 v3.0
 1、实现容错。如果任务进行的过程中，map worker或者reduce worker挂掉了，coodinator将worker未完成的任务分配给其他的worker，否则coodinator将会一直等待worker任务完成，而不中止进程。
-2、
+2、如何实现容错？每次将任务派给一个worker就开启一个新的线程，检查10秒内worker有没有完成任务，检查10次，每次间隔1秒种，如果中间检查到已经完成任务，就提前中止线程。如果10秒钟之后还是检查没有完成任务，那就将没有完成的这个任务的index放入到一个队列，这里未完成的map task和未完成的reduce task分开放入两个失败队列中，每一次worker过来向coordinator请求任务，coordinator优先派出失败队列中的任务，然后再派发正常队列中未派完的任务。
+
+设计说明：
+master数据结构：
+var maptaskstodeliever int[]; // 待分配的maptasks，每个元素代表文件的索引值，数组长度是文件的个数;其中包含处理失败的map tasks
+var reducetaskstodeliever int[]; // 待分配的reducetasks,每个元素代表reduce worker的索引值，数组长度是reduce worker的总数;其中包含处理失败的reduce workers
+var maptasksresults boolean[]; // 所有的maptasks的完成情况
+var reducetasksresults boolean[]; // 所有的reducetasks的完成情况
+var maptasksnum int; // 待分配的maptasks总数量
+var reducetasksnum int; // 待分配的reducetasks总数量
+var finishedmaptasknum int; // 已经完成的maptasks总数量
+var fiinishedreducenum int; // 已经完成的reducetasks总数量
+
+master设计思路：
+在finishedmaptasknum < maptasksnum的时候，首先将maptaskstodeliever中的任务分配给worker，每分配一个任务就开启一个新的线程检查worker是否完成超时，如果超时则将该任务重新加入maptaskstodeliever中；异步接收worker完成map task的消息，每次接收到一次消息，就将在finishedmaptasknum增加1，同时将maptasksresults中对应的元素置为true；在finishedmaptasknum == maptasksnum之后，再分配reducetaskstodeliever的任务，同理按照上面的流程去处理。

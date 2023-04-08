@@ -94,7 +94,7 @@ func doMapWork(task *Task, mapf func(string, string) []KeyValue) {
 	k := 0
 	if len(encvarlist) == 0 {
 		for k < reduceNum {
-			oname := "reduce-" + strconv.Itoa(os.Getpid()) + "-" + strconv.Itoa(k)
+			oname := "mr-reduce-" + strconv.Itoa(os.Getpid()) + "-" + strconv.Itoa(k)
 			if _, err := os.Stat(oname); err == nil {
 				//fmt.Printf("File exists\n")
 			} else {
@@ -125,7 +125,7 @@ func doReduceWork(task *Task, reducef func(string, []string) string) {
 	index := task.Index
 	//log.Println("task index is" + strconv.Itoa(index))
 	kva := []KeyValue{}
-	files, err := filepath.Glob(fmt.Sprintf("reduce-%v-%v", "*", index))
+	files, err := filepath.Glob(fmt.Sprintf("mr-reduce-%v-%v", "*", index))
 	if err != nil {
 		log.Fatalf("find reduce files fail")
 	}
@@ -188,7 +188,7 @@ func RequstTask() *Task {
 func notifyMapDone(fileindex int) {
 	args := fileindex
 	reply := Task{}
-	ok := call("Coordinator.ReceiveNotify", &args, &reply)
+	ok := call("Coordinator.ReceiveMapNotify", &args, &reply)
 	if !ok {
 		fmt.Printf("call failed!\n")
 	}
